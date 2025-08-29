@@ -5,12 +5,30 @@
       <v-menu>
         <template #activator="{ props }">
           <v-btn v-bind="props">
+            Cache
+          </v-btn>
+        </template>
+        <v-list>
+          <v-list-item prepend-icon="mdi-redis">
+            <v-list-item-title>Redis</v-list-item-title>
+          </v-list-item>
+        </v-list>
+      </v-menu>
+      <v-menu>
+        <template #activator="{ props }">
+          <v-btn v-bind="props">
             Messaging
           </v-btn>
         </template>
         <v-list>
           <v-list-item prepend-icon="mdi-bus">
             <v-list-item-title>Service Bus</v-list-item-title>
+          </v-list-item>
+          <v-list-item prepend-icon="mdi-rabbit">
+            <v-list-item-title>RabbitMQ</v-list-item-title>
+          </v-list-item>
+          <v-list-item prepend-icon="mdi-apache-kafka">
+            <v-list-item-title>Kafka</v-list-item-title>
           </v-list-item>
         </v-list>
       </v-menu>
