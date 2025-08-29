@@ -1,17 +1,27 @@
 
-import type { Queue, Subscription } from './models';
+import type { Queue, Subscription, RabbitMqQueue, RabbitMqExchange } from './models';
 
-export async function fetchData(serviceBusName: string, entityTypeFilter: 'topics' | 'queues', currentPage: number, pageSize: number, nameFilter: string, subscriptionNameFilter: string, sortBy: any[]) {
+export async function fetchData(instanceName: string, entityTypeFilter: 'topics' | 'queues' | 'exchanges', currentPage: number, pageSize: number, nameFilter: string, subscriptionNameFilter: string, sortBy: any[]) {
     const skip = (currentPage - 1) * pageSize;
     const params = new URLSearchParams({
       skip: skip.toString(),
       top: pageSize.toString(),
       nameFilter: nameFilter,
-      serviceBusName,
     });
 
-    if (entityTypeFilter === 'topics' && subscriptionNameFilter) {
-      params.append('subscriptionNameFilter', subscriptionNameFilter);
+    let endpoint = '';
+    if (entityTypeFilter === 'topics' || entityTypeFilter === 'queues') {
+      params.append('serviceBusName', instanceName);
+      if (entityTypeFilter === 'topics' && subscriptionNameFilter) {
+        params.append('subscriptionNameFilter', subscriptionNameFilter);
+      }
+      endpoint = entityTypeFilter === 'queues' ? '/api/queues' : '/api/subscriptions';
+    } else if (entityTypeFilter === 'exchanges') {
+      params.append('rabbitMqName', instanceName);
+      endpoint = '/api/rabbitmq/exchanges';
+    } else { // rabbitmq queues
+      params.append('rabbitMqName', instanceName);
+      endpoint = '/api/rabbitmq/queues';
     }
 
     if (sortBy && sortBy.length > 0) {
@@ -19,7 +29,6 @@ export async function fetchData(serviceBusName: string, entityTypeFilter: 'topic
       params.append('order', sortBy[0].order);
     }
 
-    const endpoint = entityTypeFilter === 'queues' ? '/api/queues' : '/api/subscriptions';
     const response = await fetch(`${endpoint}?${params.toString()}`);
 
     if (!response.ok) {
@@ -30,20 +39,23 @@ export async function fetchData(serviceBusName: string, entityTypeFilter: 'topic
     return await response.json();
 }
 
-export async function createEntity(serviceBusName: string, entityType: string, name: string, subscriptionName?: string) {
+export async function createEntity(instanceName: string, entityType: string, name: string, subscriptionName?: string) {
     let endpoint = '';
     let body = {};
     let validationError = '';
+    let params = new URLSearchParams();
 
     if (entityType === 'queue') {
       if (!name) validationError = 'Queue name is required.';
       endpoint = '/api/queues';
       body = { name };
+      params.append('serviceBusName', instanceName);
     } else if (entityType === 'topic') {
       if (!name) validationError = 'Topic name is required.';
       endpoint = '/api/topics';
       body = { name };
-    } else { // subscription
+      params.append('serviceBusName', instanceName);
+    } else if (entityType === 'subscription') { 
       if (!name) validationError = 'Topic name is required.';
       else if (!subscriptionName) validationError = 'Subscription name is required.';
       endpoint = '/api/subscriptions';
@@ -51,13 +63,24 @@ export async function createEntity(serviceBusName: string, entityType: string, n
         topicName: name,
         subscriptionName
       };
+      params.append('serviceBusName', instanceName);
+    } else if (entityType === 'rabbitmq-queue') {
+      if (!name) validationError = 'Queue name is required.';
+      endpoint = '/api/rabbitmq/queues';
+      body = { name };
+      params.append('rabbitMqName', instanceName);
+    } else { // rabbitmq-exchange
+      if (!name) validationError = 'Exchange name is required.';
+      endpoint = '/api/rabbitmq/exchanges';
+      body = { name };
+      params.append('rabbitMqName', instanceName);
     }
 
     if (validationError) {
       throw new Error(validationError);
     }
 
-    const response = await fetch(`${endpoint}?serviceBusName=${serviceBusName}`, {
+    const response = await fetch(`${endpoint}?${params.toString()}`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(body)
@@ -143,4 +166,56 @@ export async function getServiceBuses() {
         throw new Error(errorData.message || `HTTP error! status: ${response.status}`);
     }
     return await response.json();
+}
+
+export async function getRabbitMqs() {
+    const response = await fetch('/api/rabbitmqs');
+    if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.message || `HTTP error! status: ${response.status}`);
+    }
+    return await response.json();
+}
+
+async function rabbitMqAction(rabbitMqName: string, endpoint: string, body: object) {
+  const response = await fetch(`${endpoint}?rabbitMqName=${rabbitMqName}`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body)
+  });
+  if (!response.ok) {
+    const errorData = await response.json();
+    throw new Error(errorData.message || 'Failed to perform action');
+  }
+  return await response.json();
+}
+
+export async function purgeRabbitMqQueue(rabbitMqName: string, queue: RabbitMqQueue) {
+  return rabbitMqAction(rabbitMqName, '/api/rabbitmq/queues/purge', { queueName: queue.name });
+}
+
+export async function deleteRabbitMqQueue(rabbitMqName: string, queue: RabbitMqQueue) {
+  const response = await fetch(`/api/rabbitmq/queues/delete?rabbitMqName=${rabbitMqName}`, {
+    method: 'DELETE',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ queueName: queue.name })
+  });
+  if (!response.ok) {
+      const errorData = await response.json();
+      throw new Error(errorData.message || 'Failed to delete queue');
+  }
+  return await response.json();
+}
+
+export async function deleteRabbitMqExchange(rabbitMqName: string, exchange: RabbitMqExchange) {
+  const response = await fetch(`/api/rabbitmq/exchanges/delete?rabbitMqName=${rabbitMqName}`, {
+    method: 'DELETE',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ exchangeName: exchange.name })
+  });
+  if (!response.ok) {
+      const errorData = await response.json();
+      throw new Error(errorData.message || 'Failed to delete exchange');
+  }
+  return await response.json();
 }

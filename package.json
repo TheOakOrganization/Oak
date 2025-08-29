@@ -20,6 +20,7 @@
   "dependencies": {
     "@azure/service-bus": "^7.9.5",
     "@mdi/font": "^7.4.47",
+    "amqplib": "^0.10.9",
     "cors": "^2.8.5",
     "dotenv": "^16.4.5",
     "express": "^4.19.2",

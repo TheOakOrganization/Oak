@@ -21,10 +21,10 @@
           </v-btn>
         </template>
         <v-list>
-          <v-list-item prepend-icon="mdi-bus">
+          <v-list-item prepend-icon="mdi-bus" @click="activeExplorer = 'service-bus'">
             <v-list-item-title>Service Bus</v-list-item-title>
           </v-list-item>
-          <v-list-item prepend-icon="mdi-rabbit">
+          <v-list-item prepend-icon="mdi-rabbit" @click="activeExplorer = 'rabbitmq'">
             <v-list-item-title>RabbitMQ</v-list-item-title>
           </v-list-item>
           <v-list-item prepend-icon="mdi-apache-kafka">
@@ -39,17 +39,21 @@
     </v-app-bar>
     <v-main>
       <v-container fluid>
-        <ServiceBusExplorer />
+        <ServiceBusExplorer v-if="activeExplorer === 'service-bus'" />
+        <RabbitMqExplorer v-if="activeExplorer === 'rabbitmq'" />
       </v-container>
     </v-main>
   </v-app>
 </template>
 
 <script setup lang="ts">
+import { ref } from 'vue'
 import { useTheme } from 'vuetify'
 import ServiceBusExplorer from './components/ServiceBusExplorer.vue'
+import RabbitMqExplorer from './components/RabbitMqExplorer.vue'
 
 const theme = useTheme()
+const activeExplorer = ref('service-bus')
 
 function toggleTheme() {
   theme.cycle()

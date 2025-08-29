@@ -1,26 +1,40 @@
 import express from 'express';
 import {
-  getQueues,
+  getQueues as getSbQueues,
   getSubscriptions,
   createTopic,
-  createQueue,
+  createQueue as createSbQueue,
   createSubscription,
   purgeActiveMessages,
   purgeDlq,
   purgeQueueActiveMessages,
   purgeQueueDlq,
   setQueueStatus,
-  deleteQueue,
+  deleteQueue as deleteSbQueue,
   setSubscriptionStatus,
   deleteSubscription,
   getServiceBuses
 } from './serviceBus.js';
+import {
+  getQueues as getRmqQueues,
+  getExchanges as getRmqExchanges,
+  createQueue as createRmqQueue,
+  createExchange as createRmqExchange,
+  purgeQueue as purgeRmqQueue,
+  deleteQueue as deleteRmqQueue,
+  deleteExchange as deleteRmqExchange,
+  getRabbitMqs
+} from './rabbitMq.js';
 import { logger } from './config.js';
 
 export const apiRouter = express.Router();
 
 apiRouter.get('/servicebuses', (req, res) => {
   res.json(getServiceBuses());
+});
+
+apiRouter.get('/rabbitmqs', (req, res) => {
+  res.json(getRabbitMqs());
 });
 
 apiRouter.get('/queues', async (req, res) => {
@@ -35,7 +49,7 @@ apiRouter.get('/queues', async (req, res) => {
       return res.status(400).json({ error: 'serviceBusName query parameter is required.' });
     }
 
-    const { items, total } = await getQueues(serviceBusName, skip, top, nameFilter, orderBy, order);
+    const { items, total } = await getSbQueues(serviceBusName, skip, top, nameFilter, orderBy, order);
     logger.info(`Returning ${items.length} of ${total} queues.`);
     res.json({ items, total });
   } catch (err) {
@@ -96,7 +110,7 @@ apiRouter.post('/queues', async (req, res) => {
     return res.status(400).json({ error: 'serviceBusName query parameter is required.' });
   }
   try {
-    await createQueue(serviceBusName, name);
+    await createSbQueue(serviceBusName, name);
     res.status(201).json({ message: `Queue '${name}' created successfully.` });
   } catch (err) {
     logger.error({ err }, `Error creating queue:`);
@@ -218,7 +232,7 @@ apiRouter.delete('/queues/delete', async (req, res) => {
     return res.status(400).json({ error: 'serviceBusName query parameter is required.' });
   }
   try {
-    await deleteQueue(serviceBusName, queueName);
+    await deleteSbQueue(serviceBusName, queueName);
     res.json({ message: 'Queue deleted successfully.' });
   } catch (err) {
     logger.error({ err }, 'Error deleting queue:');
@@ -258,5 +272,135 @@ apiRouter.delete('/subscriptions/delete', async (req, res) => {
   } catch (err) {
     logger.error({ err }, 'Error deleting subscription:');
     res.status(500).json({ error: 'Failed to delete subscription.', message: err.message });
+  }
+});
+
+// RabbitMQ routes
+apiRouter.get('/rabbitmq/queues', async (req, res) => {
+  logger.info('Received request to fetch RabbitMQ queues...');
+  try {
+    const skip = parseInt(req.query.skip, 10) || 0;
+    const top = parseInt(req.query.top, 10) || 25;
+    const nameFilter = (req.query.nameFilter || '').toLowerCase();
+    const { orderBy, order, rabbitMqName } = req.query;
+
+    if (!rabbitMqName) {
+      return res.status(400).json({ error: 'rabbitMqName query parameter is required.' });
+    }
+
+    const { items, total } = await getRmqQueues(rabbitMqName, skip, top, nameFilter, orderBy, order);
+    logger.info(`Returning ${items.length} of ${total} RabbitMQ queues.`);
+    res.json({ items, total });
+  } catch (err) {
+    logger.error({ err }, 'Error fetching RabbitMQ queues:');
+    res.status(500).json({ error: 'Failed to fetch RabbitMQ queues.', message: err.message });
+  }
+});
+
+apiRouter.get('/rabbitmq/exchanges', async (req, res) => {
+  logger.info('Received request to fetch RabbitMQ exchanges...');
+  try {
+    const skip = parseInt(req.query.skip, 10) || 0;
+    const top = parseInt(req.query.top, 10) || 25;
+    const nameFilter = (req.query.nameFilter || '').toLowerCase();
+    const { orderBy, order, rabbitMqName } = req.query;
+
+    if (!rabbitMqName) {
+      return res.status(400).json({ error: 'rabbitMqName query parameter is required.' });
+    }
+
+    const { items, total } = await getRmqExchanges(rabbitMqName, skip, top, nameFilter, orderBy, order);
+    logger.info(`Returning ${items.length} of ${total} RabbitMQ exchanges.`);
+    res.json({ items, total });
+  } catch (err) {
+    logger.error({ err }, 'Error fetching RabbitMQ exchanges:');
+    res.status(500).json({ error: 'Failed to fetch RabbitMQ exchanges.', message: err.message });
+  }
+});
+
+apiRouter.post('/rabbitmq/queues', async (req, res) => {
+  const { rabbitMqName } = req.query;
+  const { name } = req.body;
+  logger.info(`Creating RabbitMQ queue: ${name}`);
+  if (!name) {
+    return res.status(400).json({ error: 'Queue name is required.' });
+  }
+  if (!rabbitMqName) {
+    return res.status(400).json({ error: 'rabbitMqName query parameter is required.' });
+  }
+  try {
+    await createRmqQueue(rabbitMqName, name);
+    res.status(201).json({ message: `Queue '${name}' created successfully.` });
+  } catch (err) {
+    logger.error({ err }, `Error creating RabbitMQ queue:`);
+    res.status(500).json({ error: 'Failed to create RabbitMQ queue.', message: err.message });
+  }
+});
+
+apiRouter.post('/rabbitmq/exchanges', async (req, res) => {
+  const { rabbitMqName } = req.query;
+  const { name } = req.body;
+  logger.info(`Creating RabbitMQ exchange: ${name}`);
+  if (!name) {
+    return res.status(400).json({ error: 'Exchange name is required.' });
+  }
+  if (!rabbitMqName) {
+    return res.status(400).json({ error: 'rabbitMqName query parameter is required.' });
+  }
+  try {
+    await createRmqExchange(rabbitMqName, name);
+    res.status(201).json({ message: `Exchange '${name}' created successfully.` });
+  } catch (err) {
+    logger.error({ err }, `Error creating RabbitMQ exchange:`);
+    res.status(500).json({ error: 'Failed to create RabbitMQ exchange.', message: err.message });
+  }
+});
+
+apiRouter.post('/rabbitmq/queues/purge', async (req, res) => {
+  const { rabbitMqName } = req.query;
+  const { queueName } = req.body;
+  logger.info(`Purging messages for RabbitMQ queue ${queueName}`);
+  if (!rabbitMqName) {
+    return res.status(400).json({ error: 'rabbitMqName query parameter is required.' });
+  }
+  try {
+    const count = await purgeRmqQueue(rabbitMqName, queueName);
+    logger.info(`Total purged messages: ${count}`);
+    res.json({ message: `Successfully purged ${count} messages.` });
+  } catch (err) {
+    logger.error({ err }, 'Error purging messages from RabbitMQ queue:');
+    res.status(500).json({ error: 'Failed to purge messages.', message: err.message });
+  }
+});
+
+apiRouter.delete('/rabbitmq/queues/delete', async (req, res) => {
+  const { rabbitMqName } = req.query;
+  const { queueName } = req.body;
+  logger.info(`Deleting RabbitMQ queue ${queueName}`);
+  if (!rabbitMqName) {
+    return res.status(400).json({ error: 'rabbitMqName query parameter is required.' });
+  }
+  try {
+    await deleteRmqQueue(rabbitMqName, queueName);
+    res.json({ message: 'Queue deleted successfully.' });
+  } catch (err) {
+    logger.error({ err }, 'Error deleting RabbitMQ queue:');
+    res.status(500).json({ error: 'Failed to delete RabbitMQ queue.', message: err.message });
+  }
+});
+
+apiRouter.delete('/rabbitmq/exchanges/delete', async (req, res) => {
+  const { rabbitMqName } = req.query;
+  const { exchangeName } = req.body;
+  logger.info(`Deleting RabbitMQ exchange ${exchangeName}`);
+  if (!rabbitMqName) {
+    return res.status(400).json({ error: 'rabbitMqName query parameter is required.' });
+  }
+  try {
+    await deleteRmqExchange(rabbitMqName, exchangeName);
+    res.json({ message: 'Exchange deleted successfully.' });
+  } catch (err) {
+    logger.error({ err }, 'Error deleting RabbitMQ exchange:');
+    res.status(500).json({ error: 'Failed to delete RabbitMQ exchange.', message: err.message });
   }
 });

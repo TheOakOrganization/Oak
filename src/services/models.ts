@@ -18,3 +18,17 @@ export interface Queue {
   transferDeadLetterMessageCount: number;
   sizeInBytes: number;
 }
+
+export interface RabbitMqQueue {
+  name: string;
+  messages: number;
+  consumers: number;
+}
+
+export interface RabbitMqExchange {
+  name: string;
+  type: string;
+  durable: boolean;
+  auto_delete: boolean;
+  internal: boolean;
+}
