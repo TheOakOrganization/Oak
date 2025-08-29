@@ -2,7 +2,7 @@ import express from 'express';
 import {
   getQueues as getSbQueues,
   getSubscriptions,
-  createTopic,
+  createTopic as createSbTopic,
   createQueue as createSbQueue,
   createSubscription,
   purgeActiveMessages,
@@ -25,6 +25,14 @@ import {
   deleteExchange as deleteRmqExchange,
   getRabbitMqs
 } from './rabbitMq.js';
+import {
+  getTopics as getKafkaTopics,
+  getConsumerGroups as getKafkaConsumerGroups,
+  createTopic as createKafkaTopic,
+  deleteTopic as deleteKafkaTopic,
+  deleteConsumerGroup as deleteKafkaConsumerGroup,
+  getKafkas
+} from './kafka.js';
 import { logger } from './config.js';
 
 export const apiRouter = express.Router();
@@ -35,6 +43,10 @@ apiRouter.get('/servicebuses', (req, res) => {
 
 apiRouter.get('/rabbitmqs', (req, res) => {
   res.json(getRabbitMqs());
+});
+
+apiRouter.get('/kafkas', (req, res) => {
+  res.json(getKafkas());
 });
 
 apiRouter.get('/queues', async (req, res) => {
@@ -91,7 +103,7 @@ apiRouter.post('/topics', async (req, res) => {
     return res.status(400).json({ error: 'serviceBusName query parameter is required.' });
   }
   try {
-    await createTopic(serviceBusName, name);
+    await createSbTopic(serviceBusName, name);
     res.status(201).json({ message: `Topic '${name}' created successfully.` });
   } catch (err) {
     logger.error({ err }, `Error creating topic:`);
@@ -402,5 +414,99 @@ apiRouter.delete('/rabbitmq/exchanges/delete', async (req, res) => {
   } catch (err) {
     logger.error({ err }, 'Error deleting RabbitMQ exchange:');
     res.status(500).json({ error: 'Failed to delete RabbitMQ exchange.', message: err.message });
+  }
+});
+
+// Kafka routes
+apiRouter.get('/kafka/topics', async (req, res) => {
+  logger.info('Received request to fetch Kafka topics...');
+  try {
+    const skip = parseInt(req.query.skip, 10) || 0;
+    const top = parseInt(req.query.top, 10) || 25;
+    const nameFilter = (req.query.nameFilter || '').toLowerCase();
+    const { orderBy, order, kafkaName } = req.query;
+
+    if (!kafkaName) {
+      return res.status(400).json({ error: 'kafkaName query parameter is required.' });
+    }
+
+    const { items, total } = await getKafkaTopics(kafkaName, skip, top, nameFilter, orderBy, order);
+    logger.info(`Returning ${items.length} of ${total} Kafka topics.`);
+    res.json({ items, total });
+  } catch (err) {
+    logger.error({ err }, 'Error fetching Kafka topics:');
+    res.status(500).json({ error: 'Failed to fetch Kafka topics.', message: err.message });
+  }
+});
+
+apiRouter.get('/kafka/consumer-groups', async (req, res) => {
+  logger.info('Received request to fetch Kafka consumer groups...');
+  try {
+    const skip = parseInt(req.query.skip, 10) || 0;
+    const top = parseInt(req.query.top, 10) || 25;
+    const nameFilter = (req.query.nameFilter || '').toLowerCase();
+    const { orderBy, order, kafkaName } = req.query;
+
+    if (!kafkaName) {
+      return res.status(400).json({ error: 'kafkaName query parameter is required.' });
+    }
+
+    const { items, total } = await getKafkaConsumerGroups(kafkaName, skip, top, nameFilter, orderBy, order);
+    logger.info(`Returning ${items.length} of ${total} Kafka consumer groups.`);
+    res.json({ items, total });
+  } catch (err) {
+    logger.error({ err }, 'Error fetching Kafka consumer groups:');
+    res.status(500).json({ error: 'Failed to fetch Kafka consumer groups.', message: err.message });
+  }
+});
+
+apiRouter.post('/kafka/topics', async (req, res) => {
+  const { kafkaName } = req.query;
+  const { name } = req.body;
+  logger.info(`Creating Kafka topic: ${name}`);
+  if (!name) {
+    return res.status(400).json({ error: 'Topic name is required.' });
+  }
+  if (!kafkaName) {
+    return res.status(400).json({ error: 'kafkaName query parameter is required.' });
+  }
+  try {
+    await createKafkaTopic(kafkaName, name);
+    res.status(201).json({ message: `Topic '${name}' created successfully.` });
+  } catch (err) {
+    logger.error({ err }, `Error creating Kafka topic:`);
+    res.status(500).json({ error: 'Failed to create Kafka topic.', message: err.message });
+  }
+});
+
+apiRouter.delete('/kafka/topics/delete', async (req, res) => {
+  const { kafkaName } = req.query;
+  const { topicName } = req.body;
+  logger.info(`Deleting Kafka topic ${topicName}`);
+  if (!kafkaName) {
+    return res.status(400).json({ error: 'kafkaName query parameter is required.' });
+  }
+  try {
+    await deleteKafkaTopic(kafkaName, topicName);
+    res.json({ message: 'Topic deleted successfully.' });
+  } catch (err) {
+    logger.error({ err }, 'Error deleting Kafka topic:');
+    res.status(500).json({ error: 'Failed to delete Kafka topic.', message: err.message });
+  }
+});
+
+apiRouter.delete('/kafka/consumer-groups/delete', async (req, res) => {
+  const { kafkaName } = req.query;
+  const { groupId } = req.body;
+  logger.info(`Deleting Kafka consumer group ${groupId}`);
+  if (!kafkaName) {
+    return res.status(400).json({ error: 'kafkaName query parameter is required.' });
+  }
+  try {
+    await deleteKafkaConsumerGroup(kafkaName, groupId);
+    res.json({ message: 'Consumer group deleted successfully.' });
+  } catch (err) {
+    logger.error({ err }, 'Error deleting Kafka consumer group:');
+    res.status(500).json({ error: 'Failed to delete Kafka consumer group.', message: err.message });
   }
 });

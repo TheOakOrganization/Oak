@@ -3,11 +3,11 @@
     <v-row>
       <v-col cols="12">
         <v-select
-          v-model="selectedRabbitMq"
-          :items="rabbitMqs"
+          v-model="selectedKafka"
+          :items="kafkas"
           item-title="name"
           item-value="name"
-          label="Select RabbitMQ Instance"
+          label="Select Kafka Instance"
           :disabled="loading"
           hide-details
         ></v-select>
@@ -17,19 +17,19 @@
       <v-col cols="12">
         <div class="d-flex align-center">
           <v-radio-group v-model="entityTypeFilter" inline class="mr-4">
-            <v-radio label="Exchanges" value="exchanges"></v-radio>
-            <v-radio label="Queues" value="queues"></v-radio>
+            <v-radio label="Topics" value="topics"></v-radio>
+            <v-radio label="Consumer Groups" value="consumer-groups"></v-radio>
           </v-radio-group>
           <v-text-field
             v-model="nameFilter"
-            :label="entityTypeFilter === 'exchanges' ? 'Filter by exchange name...' : 'Filter by queue name...'"
+            :label="entityTypeFilter === 'topics' ? 'Filter by topic name...' : 'Filter by consumer group name...'"
             dense
             clearable
             hide-details
             class="flex-grow-1"
-            :disabled="!selectedRabbitMq"
+            :disabled="!selectedKafka"
           ></v-text-field>
-          <v-btn color="primary" @click="openCreateDialog" class="ml-4" :disabled="!selectedRabbitMq">
+          <v-btn color="primary" @click="openCreateDialog" class="ml-4" :disabled="!selectedKafka">
             Create New
           </v-btn>
         </div>
@@ -40,12 +40,12 @@
       <v-col cols="12">
         <v-alert v-if="error" type="error" :text="error" class="mb-4"></v-alert>
 
-        <v-card v-if="entityTypeFilter === 'queues'">
-          <v-card-title>Queues ({{ totalQueues.toLocaleString() }})</v-card-title>
+        <v-card v-if="entityTypeFilter === 'topics'">
+          <v-card-title>Topics ({{ totalTopics.toLocaleString() }})</v-card-title>
           <v-data-table-server
-            :headers="queueHeaders"
-            :items="queues"
-            :items-length="totalQueues"
+            :headers="topicHeaders"
+            :items="topics"
+            :items-length="totalTopics"
             :loading="loading"
             v-model:page="currentPage"
             v-model:items-per-page="pageSize"
@@ -55,27 +55,20 @@
             <template v-slot:item.actions="{ item }">
               <v-tooltip location="top">
                 <template v-slot:activator="{ props }">
-                  <v-btn v-bind="props" icon="mdi-fire" size="small" @click="selectedRabbitMq && purgeQueue(item)" :disabled="item.messages === 0" class="mr-2">
-                  </v-btn>
+                  <v-btn v-bind="props" icon="mdi-delete-forever" size="small" color="error" @click="selectedKafka && deleteTopic(item)"></v-btn>
                 </template>
-                <span>Purge Messages</span>
-              </v-tooltip>
-              <v-tooltip location="top">
-                <template v-slot:activator="{ props }">
-                  <v-btn v-bind="props" icon="mdi-delete-forever" size="small" color="error" @click="selectedRabbitMq && deleteQueue(item)"></v-btn>
-                </template>
-                <span>Delete Queue</span>
+                <span>Delete Topic</span>
               </v-tooltip>
             </template>
           </v-data-table-server>
         </v-card>
 
-        <v-card v-if="entityTypeFilter === 'exchanges'">
-          <v-card-title>Exchanges ({{ totalExchanges.toLocaleString() }})</v-card-title>
+        <v-card v-if="entityTypeFilter === 'consumer-groups'">
+          <v-card-title>Consumer Groups ({{ totalConsumerGroups.toLocaleString() }})</v-card-title>
           <v-data-table-server
-            :headers="exchangeHeaders"
-            :items="exchanges"
-            :items-length="totalExchanges"
+            :headers="consumerGroupHeaders"
+            :items="consumerGroups"
+            :items-length="totalConsumerGroups"
             :loading="loading"
             v-model:page="currentPage"
             v-model:items-per-page="pageSize"
@@ -85,9 +78,9 @@
             <template v-slot:item.actions="{ item }">
               <v-tooltip location="top">
                 <template v-slot:activator="{ props }">
-                  <v-btn v-bind="props" icon="mdi-delete-forever" size="small" color="error" @click="selectedRabbitMq && deleteExchange(item)"></v-btn>
+                  <v-btn v-bind="props" icon="mdi-delete-forever" size="small" color="error" @click="selectedKafka && deleteConsumerGroup(item)"></v-btn>
                 </template>
-                <span>Delete Exchange</span>
+                <span>Delete Consumer Group</span>
               </v-tooltip>
             </template>
           </v-data-table-server>
@@ -103,12 +96,11 @@
         <v-card-text>
           <v-container>
             <v-radio-group v-model="newEntity.type" inline @update:modelValue="newEntity.name = ''">
-              <v-radio label="Queue" value="queue"></v-radio>
-              <v-radio label="Exchange" value="exchange"></v-radio>
+              <v-radio label="Topic" value="topic"></v-radio>
             </v-radio-group>
             <v-text-field
               v-model="newEntity.name"
-              :label="getNewEntityNameLabel()"
+              label="New Topic Name*"
               required
               class="mt-2"
             />
@@ -129,26 +121,25 @@
 
 <script setup lang="ts">
 import { ref, onMounted, watch } from 'vue';
-import type { RabbitMqQueue, RabbitMqExchange } from '@/services/models';
+import type { KafkaTopic, KafkaConsumerGroup } from '@/services/models';
 import {
-  getRabbitMqs,
+  getKafkas,
   fetchData as apiFetchData,
   createEntity as apiCreateEntity,
-  purgeRabbitMqQueue as apiPurgeQueue,
-  deleteRabbitMqQueue as apiDeleteQueue,
-  deleteRabbitMqExchange as apiDeleteExchange,
+  deleteKafkaTopic as apiDeleteTopic,
+  deleteKafkaConsumerGroup as apiDeleteConsumerGroup,
 } from '@/services/api';
 
 // Refs
-const rabbitMqs = ref<{name: string}[]>([]);
-const selectedRabbitMq = ref<string | null>(null);
-const queues = ref<RabbitMqQueue[]>([]);
-const totalQueues = ref(0);
-const exchanges = ref<RabbitMqExchange[]>([]);
-const totalExchanges = ref(0);
+const kafkas = ref<{name: string}[]>([]);
+const selectedKafka = ref<string | null>(null);
+const topics = ref<KafkaTopic[]>([]);
+const totalTopics = ref(0);
+const consumerGroups = ref<KafkaConsumerGroup[]>([]);
+const totalConsumerGroups = ref(0);
 const loading = ref(true);
 const error = ref<string | null>(null);
-const entityTypeFilter = ref<'exchanges' | 'queues'>('exchanges');
+const entityTypeFilter = ref<'topics' | 'consumer-groups'>('topics');
 const nameFilter = ref('');
 const currentPage = ref(1);
 const pageSize = ref(10); // Default items per page
@@ -156,30 +147,28 @@ const sortBy = ref<any[]>([]);
 const createDialog = ref(false);
 const creating = ref(false);
 const newEntity = ref({
-  type: 'queue',
+  type: 'topic',
   name: ''
 });
 
 // Headers
-const queueHeaders: any = [
-  { title: 'Name', key: 'name', sortable: true },
-  { title: 'Messages', key: 'messages', sortable: true },
-  { title: 'Consumers', key: 'consumers', sortable: true },
+const topicHeaders: any = [
+  { title: 'Name', key: 'topic', sortable: true },
+  { title: 'Partitions', key: 'partitions', sortable: true },
+  { title: 'Replicas', key: 'replicationFactor', sortable: true },
   { title: 'Actions', key: 'actions', sortable: false, align: 'end'  },
 ];
 
-const exchangeHeaders: any = [
-  { title: 'Name', key: 'name', sortable: true },
-  { title: 'Type', key: 'type', sortable: true },
-  { title: 'Durable', key: 'durable', sortable: true },
-  { title: 'Auto Delete', key: 'auto_delete', sortable: true },
-  { title: 'Internal', key: 'internal', sortable: true },
+const consumerGroupHeaders: any = [
+  { title: 'Name', key: 'groupId', sortable: true },
+  { title: 'State', key: 'state', sortable: true },
+  { title: 'Members', key: 'members', sortable: true },
   { title: 'Actions', key: 'actions', sortable: false, align: 'end'  },
 ];
 
 // Methods
 async function fetchData({ page, itemsPerPage, sortBy: newSortBy }: { page: number, itemsPerPage: number, sortBy: any[] }) {
-  if (!selectedRabbitMq.value) {
+  if (!selectedKafka.value) {
     return;
   }
 
@@ -193,8 +182,8 @@ async function fetchData({ page, itemsPerPage, sortBy: newSortBy }: { page: numb
     sortBy.value = newSortBy;
 
     const data = await apiFetchData(
-      selectedRabbitMq.value,
-      'rabbitmq',
+      selectedKafka.value,
+      'kafka',
       entityTypeFilter.value,
       page,
       itemsPerPage,
@@ -203,12 +192,12 @@ async function fetchData({ page, itemsPerPage, sortBy: newSortBy }: { page: numb
       sortBy.value
     );
 
-    if (entityTypeFilter.value === 'queues') {
-      queues.value = data.items;
-      totalQueues.value = data.total;
+    if (entityTypeFilter.value === 'topics') {
+      topics.value = data.items;
+      totalTopics.value = data.total;
     } else {
-      exchanges.value = data.items;
-      totalExchanges.value = data.total;
+      consumerGroups.value = data.items;
+      totalConsumerGroups.value = data.total;
     }
 
   } catch (e: any) {
@@ -221,18 +210,18 @@ async function fetchData({ page, itemsPerPage, sortBy: newSortBy }: { page: numb
 
 onMounted(async () => {
   try {
-    const rmqs = await getRabbitMqs();
-    rabbitMqs.value = rmqs;
-    if (rmqs.length > 0) {
-      selectedRabbitMq.value = rmqs[0].name;
+    const kfks = await getKafkas();
+    kafkas.value = kfks;
+    if (kfks.length > 0) {
+      selectedKafka.value = kfks[0].name;
     }
   } catch (e: any) {
-    error.value = `Failed to fetch RabbitMQ list: ${e.message}`;
+    error.value = `Failed to fetch Kafka list: ${e.message}`;
   }
 });
 
-watch([selectedRabbitMq, entityTypeFilter, nameFilter], () => {
-  if (!selectedRabbitMq.value) return;
+watch([selectedKafka, entityTypeFilter, nameFilter], () => {
+  if (!selectedKafka.value) return;
   currentPage.value = 1;
   fetchData({ page: currentPage.value, itemsPerPage: pageSize.value, sortBy: sortBy.value });
 });
@@ -245,7 +234,7 @@ function closeCreateDialog() {
   createDialog.value = false;
   setTimeout(() => {
     newEntity.value = {
-      type: 'queue',
+      type: 'topic',
       name: ''
     };
   }, 300);
@@ -254,14 +243,14 @@ function closeCreateDialog() {
 async function handleCreateEntity() {
   creating.value = true;
   error.value = null;
-  if (!selectedRabbitMq.value) {
-    alert('Please select a RabbitMQ instance first.');
+  if (!selectedKafka.value) {
+    alert('Please select a Kafka instance first.');
     creating.value = false;
     return;
   }
   try {
     const result = await apiCreateEntity(
-      selectedRabbitMq.value,
+      selectedKafka.value,
       newEntity.value.type,
       newEntity.value.name,
       undefined
@@ -269,11 +258,7 @@ async function handleCreateEntity() {
 
     alert(result.message); // Success message
     closeCreateDialog();
-    if (newEntity.value.type === 'queue') {
-      entityTypeFilter.value = 'queues';
-    } else {
-      entityTypeFilter.value = 'exchanges';
-    }
+    entityTypeFilter.value = 'topics';
     fetchData({ page: 1, itemsPerPage: pageSize.value, sortBy: sortBy.value });
 
   } catch (e: any) {
@@ -283,48 +268,28 @@ async function handleCreateEntity() {
   }
 }
 
-function getNewEntityNameLabel() {
-  switch(newEntity.value.type) {
-    case 'queue': return 'New Queue Name*';
-    case 'exchange': return 'New Exchange Name*';
-    default: return 'Name*';
-  }
-}
-
 // Action Methods
-async function purgeQueue(queue: RabbitMqQueue) {
-  if (!selectedRabbitMq.value) return;
-  if (!confirm(`Are you sure you want to purge all messages from queue ${queue.name}? This action cannot be undone.`)) return;
+async function deleteTopic(topic: KafkaTopic) {
+  if (!selectedKafka.value) return;
+  if (!confirm(`Are you sure you want to DELETE topic ${topic.topic}? This action cannot be undone.`)) return;
   try {
-    const result = await apiPurgeQueue(selectedRabbitMq.value, queue);
+    const result = await apiDeleteTopic(selectedKafka.value, topic);
     alert(result.message);
     fetchData({ page: currentPage.value, itemsPerPage: pageSize.value, sortBy: sortBy.value });
   } catch (e: any) {
-    error.value = `Failed to purge queue: ${e.message}`;
+    error.value = `Failed to delete topic: ${e.message}`;
   }
 }
 
-async function deleteQueue(queue: RabbitMqQueue) {
-  if (!selectedRabbitMq.value) return;
-  if (!confirm(`Are you sure you want to DELETE queue ${queue.name}? This action cannot be undone.`)) return;
+async function deleteConsumerGroup(group: KafkaConsumerGroup) {
+  if (!selectedKafka.value) return;
+  if (!confirm(`Are you sure you want to DELETE consumer group ${group.groupId}? This action cannot be undone.`)) return;
   try {
-    const result = await apiDeleteQueue(selectedRabbitMq.value, queue);
+    const result = await apiDeleteConsumerGroup(selectedKafka.value, group);
     alert(result.message);
     fetchData({ page: currentPage.value, itemsPerPage: pageSize.value, sortBy: sortBy.value });
   } catch (e: any) {
-    error.value = `Failed to delete queue: ${e.message}`;
-  }
-}
-
-async function deleteExchange(exchange: RabbitMqExchange) {
-  if (!selectedRabbitMq.value) return;
-  if (!confirm(`Are you sure you want to DELETE exchange ${exchange.name}? This action cannot be undone.`)) return;
-  try {
-    const result = await apiDeleteExchange(selectedRabbitMq.value, exchange);
-    alert(result.message);
-    fetchData({ page: currentPage.value, itemsPerPage: pageSize.value, sortBy: sortBy.value });
-  } catch (e: any) {
-    error.value = `Failed to delete exchange: ${e.message}`;
+    error.value = `Failed to delete consumer group: ${e.message}`;
   }
 }
 </script>

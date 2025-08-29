@@ -27,7 +27,7 @@
           <v-list-item prepend-icon="mdi-rabbit" @click="activeExplorer = 'rabbitmq'">
             <v-list-item-title>RabbitMQ</v-list-item-title>
           </v-list-item>
-          <v-list-item prepend-icon="mdi-apache-kafka">
+          <v-list-item prepend-icon="mdi-apache-kafka" @click="activeExplorer = 'kafka'">
             <v-list-item-title>Kafka</v-list-item-title>
           </v-list-item>
         </v-list>
@@ -41,6 +41,7 @@
       <v-container fluid>
         <ServiceBusExplorer v-if="activeExplorer === 'service-bus'" />
         <RabbitMqExplorer v-if="activeExplorer === 'rabbitmq'" />
+        <KafkaExplorer v-if="activeExplorer === 'kafka'" />
       </v-container>
     </v-main>
   </v-app>
@@ -51,6 +52,7 @@ import { ref } from 'vue'
 import { useTheme } from 'vuetify'
 import ServiceBusExplorer from './components/ServiceBusExplorer.vue'
 import RabbitMqExplorer from './components/RabbitMqExplorer.vue'
+import KafkaExplorer from './components/KafkaExplorer.vue'
 
 const theme = useTheme()
 const activeExplorer = ref('service-bus')

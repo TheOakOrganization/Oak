@@ -32,3 +32,15 @@ export interface RabbitMqExchange {
   auto_delete: boolean;
   internal: boolean;
 }
+
+export interface KafkaTopic {
+  topic: string;
+  partitions: number;
+  replicationFactor: number;
+}
+
+export interface KafkaConsumerGroup {
+  groupId: string;
+  state: string;
+  members: number;
+}

@@ -1,7 +1,7 @@
 
-import type { Queue, Subscription, RabbitMqQueue, RabbitMqExchange } from './models';
+import type { Queue, Subscription, RabbitMqQueue, RabbitMqExchange, KafkaTopic, KafkaConsumerGroup } from './models';
 
-export async function fetchData(instanceName: string, entityTypeFilter: 'topics' | 'queues' | 'exchanges', currentPage: number, pageSize: number, nameFilter: string, subscriptionNameFilter: string, sortBy: any[]) {
+export async function fetchData(instanceName: string, serviceType: 'service-bus' | 'rabbitmq' | 'kafka', entityTypeFilter: 'topics' | 'queues' | 'exchanges' | 'consumer-groups' | 'rabbitmq-queues', currentPage: number, pageSize: number, nameFilter: string, subscriptionNameFilter: string, sortBy: any[]) {
     const skip = (currentPage - 1) * pageSize;
     const params = new URLSearchParams({
       skip: skip.toString(),
@@ -10,19 +10,20 @@ export async function fetchData(instanceName: string, entityTypeFilter: 'topics'
     });
 
     let endpoint = '';
-    if (entityTypeFilter === 'topics' || entityTypeFilter === 'queues') {
+    if (serviceType === 'service-bus') {
       params.append('serviceBusName', instanceName);
       if (entityTypeFilter === 'topics' && subscriptionNameFilter) {
         params.append('subscriptionNameFilter', subscriptionNameFilter);
       }
       endpoint = entityTypeFilter === 'queues' ? '/api/queues' : '/api/subscriptions';
-    } else if (entityTypeFilter === 'exchanges') {
+    } else if (serviceType === 'rabbitmq') {
       params.append('rabbitMqName', instanceName);
-      endpoint = '/api/rabbitmq/exchanges';
-    } else { // rabbitmq queues
-      params.append('rabbitMqName', instanceName);
-      endpoint = '/api/rabbitmq/queues';
+      endpoint = entityTypeFilter === 'exchanges' ? '/api/rabbitmq/exchanges' : '/api/rabbitmq/queues';
+    } else if (serviceType === 'kafka') {
+      params.append('kafkaName', instanceName);
+      endpoint = entityTypeFilter === 'topics' ? '/api/kafka/topics' : '/api/kafka/consumer-groups';
     }
+
 
     if (sortBy && sortBy.length > 0) {
       params.append('orderBy', sortBy[0].key);
@@ -69,11 +70,16 @@ export async function createEntity(instanceName: string, entityType: string, nam
       endpoint = '/api/rabbitmq/queues';
       body = { name };
       params.append('rabbitMqName', instanceName);
-    } else { // rabbitmq-exchange
+    } else if (entityType === 'rabbitmq-exchange') {
       if (!name) validationError = 'Exchange name is required.';
       endpoint = '/api/rabbitmq/exchanges';
       body = { name };
       params.append('rabbitMqName', instanceName);
+    } else { // kafka-topic
+      if (!name) validationError = 'Topic name is required.';
+      endpoint = '/api/kafka/topics';
+      body = { name };
+      params.append('kafkaName', instanceName);
     }
 
     if (validationError) {
@@ -216,6 +222,41 @@ export async function deleteRabbitMqExchange(rabbitMqName: string, exchange: Rab
   if (!response.ok) {
       const errorData = await response.json();
       throw new Error(errorData.message || 'Failed to delete exchange');
+  }
+  return await response.json();
+}
+
+export async function getKafkas() {
+    const response = await fetch('/api/kafkas');
+    if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.message || `HTTP error! status: ${response.status}`);
+    }
+    return await response.json();
+}
+
+export async function deleteKafkaTopic(kafkaName: string, topic: KafkaTopic) {
+  const response = await fetch(`/api/kafka/topics/delete?kafkaName=${kafkaName}`, {
+    method: 'DELETE',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ topicName: topic.topic })
+  });
+  if (!response.ok) {
+      const errorData = await response.json();
+      throw new Error(errorData.message || 'Failed to delete topic');
+  }
+  return await response.json();
+}
+
+export async function deleteKafkaConsumerGroup(kafkaName: string, group: KafkaConsumerGroup) {
+  const response = await fetch(`/api/kafka/consumer-groups/delete?kafkaName=${kafkaName}`, {
+    method: 'DELETE',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ groupId: group.groupId })
+  });
+  if (!response.ok) {
+      const errorData = await response.json();
+      throw new Error(errorData.message || 'Failed to delete consumer group');
   }
   return await response.json();
 }

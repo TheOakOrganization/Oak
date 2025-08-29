@@ -262,6 +262,7 @@ async function fetchData({ page, itemsPerPage, sortBy: newSortBy }: { page: numb
 
     const data = await apiFetchData(
       selectedServiceBus.value,
+      'service-bus',
       entityTypeFilter.value,
       page,
       itemsPerPage,
